@@ -7,6 +7,13 @@
 #include "head_tail.h"
 #include "mqtt_extra.h"
 
+#include "hardware/rtc.h"
+#include "pico/sleep.h"
+#include "hardware/xosc.h"
+#include "hardware/rosc.h"
+#include "hardware/pll.h"
+#include "hardware/clocks.h"
+#include "hardware/regs/io_bank0.h"
  
 #include "pico/cyw43_arch.h"
 #include "pico/stdlib.h"
@@ -30,6 +37,7 @@ char remotes[6][8]={"remote1","remote2","remote3","remote4","remote5","remote6"}
  
 int rr[6];
 
+#define SLEEP_TASK_PRIORITY				( tskIDLE_PRIORITY + 12UL )
 #define BATT_TASK_PRIORITY				( tskIDLE_PRIORITY + 11UL )
 #define CLOSE_TASK_PRIORITY				( tskIDLE_PRIORITY + 10UL )
 #define OPEN_TASK_PRIORITY				( tskIDLE_PRIORITY + 9UL )
@@ -44,6 +52,7 @@ int rr[6];
 #include "lwip/apps/mqtt.h"
 #include "mqtt_example.h"
 #include "pico/util/datetime.h"
+
 //char rectime[19];
 static volatile bool fired = false;
 u8_t alarm_flg=0;
@@ -58,6 +67,8 @@ float retflg;
 uint32_t result;
 const float conversion_factor = 3.3f / (1 << 12);
 float battery;
+static bool awake;
+
 typedef struct NTP_T_ {
     ip_addr_t ntp_server_address;
     bool dns_request_sent;
@@ -152,6 +163,11 @@ float read_onboard_temperature(char unit) {
     }
 
     return -50.0f;
+}
+
+static void sleep_callback(void) {
+    printf("RTC woke us up\n");
+    awake = true;
 }
 
 static void alarm_callback(void) {
@@ -586,6 +602,20 @@ static void iperf_report(void *arg, enum lwiperf_report_type report_type,
 #endif
 }
 
+void sleep_task(__unused void *params) {
+ 
+    //sleep_goto_sleep_until(&t_alarm, &sleep_callback);
+    //sleep_goto_sleep_until(datetime_t *t, rtc_callback_t callback);
+    while (true) {   
+	
+	 sprintf(tmp," sleep task ");
+     head = head_tail_helper(head, tail, endofbuf, topofbuf, tmp);
+ 
+       vTaskDelay(20000);
+    }
+
+}
+
 /*needed for close*/
 void close_task(__unused void *params) {
     //bool on = false;
@@ -866,7 +896,7 @@ void init_pico_mqtt(void) {
     head = head_tail_helper(head, tail, endofbuf, topofbuf, tmp);
     //sprintf(tmp,"starting watchdog timer task ")
     //head = head_tail_helper(head, tail, endofbuf, topofbuf, tmp);
-    //printf("mqtt_ip = 0x%x &mqtt_ip = 0x%x\n",mqtt_ip,&mqtt_ip);
+    printf("mqtt_ip = 0x%x &mqtt_ip = 0x%x\n",mqtt_ip,&mqtt_ip);
     //printf("mqtt_port = %d &mqtt_port 0x%x\n",mqtt_port,&mqtt_port);
     sprintf(tmp,"mqtt_ip = 0x%x mqtt_port = %d  ",mqtt_ip,mqtt_port);
     head = head_tail_helper(head, tail, endofbuf, topofbuf, tmp);
@@ -906,6 +936,7 @@ void init_pico_mqtt(void) {
     xTaskCreate(open_task, "OPENThread", configMINIMAL_STACK_SIZE, NULL, OPEN_TASK_PRIORITY, NULL);
     xTaskCreate(close_task, "CLOSEThread", configMINIMAL_STACK_SIZE, NULL, CLOSE_TASK_PRIORITY, NULL);
     xTaskCreate(batt_task, "BATTThread", configMINIMAL_STACK_SIZE, NULL, BATT_TASK_PRIORITY, NULL);
+    xTaskCreate(sleep_task, "SLEEPThread", configMINIMAL_STACK_SIZE, NULL, SLEEP_TASK_PRIORITY, NULL);
 
 
 
@@ -1163,6 +1194,8 @@ int main( void )
 
 #if ( portSUPPORT_SMP == 1 ) && ( configNUM_CORES == 2 )
     printf("Starting %s on both cores:\n", rtos_name);
+	sprintf(tmp,"Starting %s on core 0: ver %s %s ", rtos_name,ver,CYW43_HOST_NAME);
+	head = head_tail_helper(head, tail, endofbuf, topofbuf, tmp);
     vLaunch();
 #elif ( RUN_FREERTOS_ON_CORE == 1 )
     printf("Starting %s on core 1:\n", rtos_name);

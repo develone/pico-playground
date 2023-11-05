@@ -26,7 +26,7 @@ target_link_libraries(picow_freertos_iperf_server_mqtt
         FreeRTOS-Kernel-Heap4 # FreeRTOS kernel and dynamic heap
 		hardware_rtc
 		hardware_adc
-        )
+		hardware_sleep )
 pico_add_extra_outputs(picow_freertos_iperf_server_mqtt)
 
  
